@@ -12,6 +12,7 @@ from .serializers import CustomTokenObtainPairSerializer
 import os
 import datetime
 from supabase import create_client
+from urllib.parse import unquote
 from rest_framework.exceptions import ValidationError
 
 
@@ -25,31 +26,34 @@ supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 @permission_classes([IsAuthenticated])
 def upload_document(request):
     try:
-        file = request.FILES.get("file")
         table = request.data.get("table")
         company_id = request.data.get("company_id")
+        file = request.FILES.get("file")
 
-        if not file or not table or not company_id:
+        # ✅ agora só exige 'file' quando não for finance
+        if not table or not company_id:
             return Response({"error": "Parâmetros obrigatórios ausentes"}, status=400)
+        if table != "finance" and not file:
+            return Response({"error": "Arquivo obrigatório ausente"}, status=400)
 
-        # gera caminho do arquivo no bucket
-        file_path = f"{company_id}/{int(datetime.datetime.now().timestamp())}-{file.name}"
+        # gera caminho do arquivo no bucket (apenas para tabelas que usam 'file')
+        public_url = None
+        if table != "finance":
+            file_path = f"{company_id}/{int(datetime.datetime.now().timestamp())}-{file.name}"
+            try:
+                supabase.storage.from_("docs").upload(
+                    file_path, file.read(), {"content-type": "application/pdf"}
+                )
+            except Exception as e:
+                return Response({"error": f"Falha no upload: {str(e)}"}, status=400)
 
-        # faz upload no Supabase
-        try:
-            supabase.storage.from_("docs").upload(
-                file_path, file.read(), {"content-type": "application/pdf"}
-            )
-        except Exception as e:
-            return Response({"error": f"Falha no upload: {str(e)}"}, status=400)
+            # get_public_url retorna string, não dict
+            public_url = supabase.storage.from_("docs").get_public_url(file_path)
 
-        # gera URL pública (Supabase Python retorna str, não dict!)
-        public_url = supabase.storage.from_("docs").get_public_url(file_path)
+            if not public_url:
+                return Response({"error": "Não foi possível gerar a URL pública"}, status=400)
 
-        if not public_url:
-            return Response({"error": "Não foi possível gerar a URL pública"}, status=400)
-
-        # cria registro no banco de acordo com a tabela
+        # grava os dados na tabela correspondente
         if table == "renewable-docs":
             RenewableDoc.objects.create(
                 company_id=company_id,
@@ -69,17 +73,51 @@ def upload_document(request):
                 amount=request.data.get("amount") or 0,
                 scheduled_date=request.data.get("scheduled_date"),
                 service_provider=request.data.get("service_provider", ""),
-                doc_url=public_url,  # 🔹 adiciona doc_url
+                doc_url=public_url,
             )
 
         elif table == "finance":
-            upload_type = request.data.get("upload_type")
+
+            invoice_file = request.FILES.get("invoice")
+
+            contract_file = request.FILES.get("contract")
+
+            # ✅ Vamos salvar os caminhos, não as URLs
+
+            invoice_path_to_save = None
+
+            contract_path_to_save = None
+
+            if invoice_file:
+                invoice_path = f"{company_id}/{int(datetime.datetime.now().timestamp())}-invoice-{invoice_file.name}"
+
+                supabase.storage.from_("docs").upload(invoice_path, invoice_file.read(), {"content-type": "application/pdf"})
+
+                invoice_path_to_save = invoice_path  # ✅ Salva o caminho
+
+            if contract_file:
+                contract_path = f"{company_id}/{int(datetime.datetime.now().timestamp())}-contract-{contract_file.name}"
+
+                supabase.storage.from_("docs").upload(contract_path, contract_file.read(), {"content-type": "application/pdf"})
+
+                contract_path_to_save = contract_path  # ✅ Salva o caminho
+
             Finance.objects.create(
+
                 company_id=company_id,
+
+                description=request.data.get("description"),
+
                 due_date=request.data.get("due_date"),
+
                 amount=request.data.get("amount") or 0,
-                invoice=public_url if upload_type == "invoice" else "",
-                contract=public_url if upload_type == "contract" else "",
+
+                # ✅ Alterado para salvar os caminhos
+
+                invoice=invoice_path_to_save,
+
+                contract=contract_path_to_save,
+
             )
 
         elif table == "constitutive-documents":
@@ -92,9 +130,7 @@ def upload_document(request):
         else:
             return Response({"error": "Tabela inválida"}, status=400)
 
-        return Response(
-            {"message": "Documento enviado com sucesso", "url": public_url}, status=201
-        )
+        return Response({"message": "Documento enviado com sucesso"}, status=201)
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
@@ -279,3 +315,41 @@ class ConstitutiveDocumentCreateView(generics.CreateAPIView):
     def perform_create(self, serializer):
         superuser_only(self.request)
         serializer.save()
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_signed_document_url(request):
+    """
+    Gera uma URL assinada e temporária para um documento no Supabase Storage.
+    Espera um parâmetro de query 'filePath'.
+    """
+    file_path = request.query_params.get("filePath")
+
+    if not file_path:
+        return Response(
+            {"error": "O parâmetro 'filePath' é obrigatório."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+
+        signed_url_data = supabase.storage.from_("docs").create_signed_url(
+            path=unquote(file_path), # Usa unquote para decodificar o path
+            expires_in=60
+        )
+
+        if not signed_url_data or 'signedURL' not in signed_url_data:
+             raise Exception("A API do Supabase não retornou uma URL assinada.")
+
+        return Response(
+            {"signedUrl": signed_url_data['signedURL']},
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        print(f"Erro ao gerar URL assinada para o caminho {file_path}: {str(e)}")
+        return Response(
+            {"error": "Não foi possível gerar a URL do documento."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

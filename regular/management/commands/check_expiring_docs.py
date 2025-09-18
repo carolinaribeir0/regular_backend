@@ -3,16 +3,20 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from datetime import timedelta
 from regular.models import RenewableDoc, UserProfile
-from django.conf import settings
 from django.core.mail import EmailMessage, get_connection
 
 
 class Command(BaseCommand):
-    help = "Verifica documentos que irão expirar em 30 dias e envia alerta por email (via MailerSend SMTP)"
+    help = "Verifica documentos que irão expirar em 30 dias e envia alerta por email (via Brevo SMTP)"
 
     def handle(self, *args, **kwargs):
+        smtp_server = os.getenv("SMTP_SERVER")
+        smtp_port = os.getenv("SMTP_PORT")
+        smtp_user = os.getenv("SMTP_USER")
+        smtp_pass = os.getenv("SMTP_PASS")
+
         today = timezone.now().date()
-        target_date = today + timedelta(days=26)
+        target_date = today + timedelta(days=16)
 
         docs_to_notify = RenewableDoc.objects.filter(expiration_date=target_date, alert_sent=False)
 
@@ -22,10 +26,10 @@ class Command(BaseCommand):
 
         # Cria a conexão SMTP
         with get_connection(
-            host=settings.MAILERSEND_SMTP_HOST,
-            port=settings.MAILERSEND_SMTP_PORT,
-            username=settings.MAILERSEND_SMTP_USERNAME,
-            password=settings.MAILERSEND_SMTP_PASSWORD,
+            host=smtp_server,
+            port=smtp_port,
+            username=smtp_user,
+            password=smtp_pass,
             use_tls=True,
         ) as connection:
 
@@ -57,7 +61,7 @@ class Command(BaseCommand):
                         email = EmailMessage(
                             subject=subject,
                             body=html_content,
-                            from_email=settings.MAILERSEND_FROM_EMAIL,
+                            from_email=smtp_user,
                             to=[recipient],
                             connection=connection,
                         )

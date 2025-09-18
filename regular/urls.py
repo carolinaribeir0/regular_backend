@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import RenewableDocListView, RenewableDocDetailView, RenewableDocCreateView, ChangePasswordView, BudgetListView, BudgetDetailView, BudgetCreateView, FinanceListView, FinanceDetailView, FinanceCreateView, ConstitutiveDocumentListView, ConstitutiveDocumentDetailView, ConstitutiveDocumentCreateView, my_companies, upload_document
+from .views import RenewableDocListView, RenewableDocDetailView, ChangePasswordView, BudgetListView, BudgetDetailView, FinanceListView, FinanceDetailView, ConstitutiveDocumentListView, ConstitutiveDocumentDetailView, my_companies, upload_document, get_signed_document_url
 
 urlpatterns = [
     path("api/my-companies/", my_companies, name="my-companies"),
@@ -17,5 +17,6 @@ urlpatterns = [
 
     path("api/constitutivedocument/", ConstitutiveDocumentListView.as_view(), name="constitutive-document-list"),
     path("api/constitutivedocument/<int:pk>/", ConstitutiveDocumentDetailView.as_view(), name="constitutive-document-detail"),
+    path("api/finance/signed-url/", get_signed_document_url, name='get-signed-document-url'),
 
 ]

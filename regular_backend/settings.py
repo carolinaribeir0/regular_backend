@@ -26,10 +26,10 @@ SUPABASE_URL = env("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = env("SUPABASE_SERVICE_KEY")
 DEBUG = env("DEBUG")
 MAILERSEND_API_KEY = os.getenv("MAILERSEND_API_KEY")
-MAILERSEND_FROM_EMAIL = "MS_02L9gq@test-zxk54v8jorxljy6v.mlsender.net"
-MAILERSEND_SMTP_HOST = "smtp.mailersend.net"
-MAILERSEND_SMTP_PORT = 587
-MAILERSEND_SMTP_USERNAME = "MS_02L9gq@test-zxk54v8jorxljy6v.mlsender.net"
+MAILERSEND_FROM_EMAIL = os.getenv("MAILERSEND_FROM_EMAIL")
+MAILERSEND_SMTP_HOST = os.getenv("MAILERSEND_SMTP_HOST")
+MAILERSEND_SMTP_PORT = os.getenv("MAILERSEND_SMTP_PORT")
+MAILERSEND_SMTP_USERNAME = os.getenv("MAILERSEND_SMTP_USERNAME")
 MAILERSEND_SMTP_PASSWORD = os.getenv("MAILERSEND_SMTP_PASSWORD")
 
 # Quick-start development settings - unsuitable for production
@@ -39,7 +39,6 @@ MAILERSEND_SMTP_PASSWORD = os.getenv("MAILERSEND_SMTP_PASSWORD")
 SECRET_KEY = "django-insecure-n^s*yx2-xwq@a#kbf__mk=zyoj2k&+pt-egk3^_ny2rj2f&i@x"
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
 
 ALLOWED_HOSTS = []
 
@@ -107,14 +106,14 @@ WSGI_APPLICATION = "regular_backend.wsgi.application"
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'postgres',
-        'USER': 'postgres.fkxvzreraoyxgqiwymjs',
-        'PASSWORD': 'Regular@data2025',
-        'HOST': 'aws-1-us-east-1.pooler.supabase.com',
-        'PORT': '6543',
+        'NAME': env("DB_NAME"),
+        'USER': env("DB_USER"),
+        'PASSWORD': env("DB_PASSWORD"),
+        'HOST': env("DB_HOST"),
+        'PORT': env("DB_PORT"),
     }
-
 }
+
 
 
 
@@ -153,10 +152,16 @@ use_tls=True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = "static/"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 CORS_ALLOW_ALL_ORIGINS = True
+
+STATIC_URL = "static/"
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
+
+# WhiteNoise para servir os arquivos estáticos
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
