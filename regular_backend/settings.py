@@ -36,7 +36,7 @@ MAILERSEND_SMTP_PASSWORD = os.getenv("MAILERSEND_SMTP_PASSWORD")
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-n^s*yx2-xwq@a#kbf__mk=zyoj2k&+pt-egk3^_ny2rj2f&i@x"
+SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 
@@ -67,6 +67,8 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
 ]
 
 REST_FRAMEWORK = {
@@ -162,6 +164,4 @@ CORS_ALLOW_ALL_ORIGINS = True
 STATIC_URL = "static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
-# WhiteNoise para servir os arquivos estáticos
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
-MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
