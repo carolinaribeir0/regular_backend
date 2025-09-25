@@ -40,7 +40,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['api.regularconsultoria.com.br']
 
 
 # Application definition
