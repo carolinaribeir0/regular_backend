@@ -1,7 +1,10 @@
+from django.conf import settings
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework import generics
 from rest_framework.exceptions import PermissionDenied
+
+from regular_backend.settings import ALLOWED_HOSTS
 from .models import RenewableDoc, Budget, Finance, ConstitutiveDocument, Company, UserProfile
 from .serializers import RenewableDocSerializer, BudgetSerializer, FinanceSerializer, ConstitutiveDocumentSerializer
 from rest_framework import status
@@ -62,7 +65,7 @@ def support_request(request):
     send_mail(
         subject,
         message,
-        "Regular Suporte <noreply@regularconsultoria.com.br>",
+        settings.DEFAULT_FROM_EMAIL,
         ["consultoria.regulatoriafg@gmail.com"],
         fail_silently=False,
     )
@@ -89,11 +92,11 @@ def password_reset(request):
         "created_at": timezone.now()
     }
 
-    reset_link = f"http://localhost:5173/reset-password/{token}"
+    reset_link = f"{settings.ALLOWED_HOSTS}/reset-password/{token}"
     send_mail(
         "Redefinição de senha - Regular On",
         f"Olá {user.username},\n\nClique no link para redefinir sua senha:\n{reset_link}\n\nSe você não solicitou isso, ignore este e-mail.",
-        "Regular Consultoria e Assessoria <noreply@regularconsultoria.com.br>",
+        settings.DEFAULT_FROM_EMAIL,
         [email],
         fail_silently=False,
     )
@@ -109,17 +112,14 @@ def password_reset_confirm(request, token):
         return Response({"error": "A nova senha é obrigatória"}, status=400)
 
     try:
-        # Verifica se o token existe
         token_data = password_reset_tokens.get(token)
         if not token_data:
             return Response({"error": "Token inválido ou expirado"}, status=400)
 
-        # Verifica expiração (30 min)
         if timezone.now() - token_data["created_at"] > timedelta(minutes=30):
             del password_reset_tokens[token]  # ❗ Remove token expirado
             return Response({"error": "O link expirou, solicite um novo"}, status=400)
 
-        # Verifica assinatura
         user_id = signer.unsign(token)
         user = User.objects.get(id=user_id)
         user.set_password(new_password)
@@ -142,13 +142,11 @@ def upload_document(request):
         company_id = request.data.get("company_id")
         file = request.FILES.get("file")
 
-        # ✅ agora só exige 'file' quando não for finance
         if not table or not company_id:
             return Response({"error": "Parâmetros obrigatórios ausentes"}, status=400)
         if table != "finance" and not file:
             return Response({"error": "Arquivo obrigatório ausente"}, status=400)
 
-        # gera caminho do arquivo no bucket (apenas para tabelas que usam 'file')
         public_url = None
         if table != "finance":
             file_path = f"{company_id}/{int(datetime.datetime.now().timestamp())}-{file.name}"
@@ -165,7 +163,6 @@ def upload_document(request):
             if not public_url:
                 return Response({"error": "Não foi possível gerar a URL pública"}, status=400)
 
-        # grava os dados na tabela correspondente
         if table == "renewable-docs":
             RenewableDoc.objects.create(
                 company_id=company_id,
@@ -194,8 +191,6 @@ def upload_document(request):
 
             contract_file = request.FILES.get("contract")
 
-            # ✅ Vamos salvar os caminhos, não as URLs
-
             invoice_path_to_save = None
 
             contract_path_to_save = None
@@ -205,14 +200,14 @@ def upload_document(request):
 
                 supabase.storage.from_("docs").upload(invoice_path, invoice_file.read(), {"content-type": "application/pdf"})
 
-                invoice_path_to_save = invoice_path  # ✅ Salva o caminho
+                invoice_path_to_save = invoice_path
 
             if contract_file:
                 contract_path = f"{company_id}/{int(datetime.datetime.now().timestamp())}-contract-{contract_file.name}"
 
                 supabase.storage.from_("docs").upload(contract_path, contract_file.read(), {"content-type": "application/pdf"})
 
-                contract_path_to_save = contract_path  # ✅ Salva o caminho
+                contract_path_to_save = contract_path
 
             Finance.objects.create(
 
@@ -224,7 +219,6 @@ def upload_document(request):
 
                 amount=request.data.get("amount") or 0,
 
-                # ✅ Alterado para salvar os caminhos
 
                 invoice=invoice_path_to_save,
 

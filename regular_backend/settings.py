@@ -31,12 +31,6 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 SUPABASE_URL = env("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = env("SUPABASE_SERVICE_KEY")
 DEBUG = env("DEBUG")
-MAILERSEND_API_KEY = os.getenv("MAILERSEND_API_KEY")
-MAILERSEND_FROM_EMAIL = os.getenv("MAILERSEND_FROM_EMAIL")
-MAILERSEND_SMTP_HOST = os.getenv("MAILERSEND_SMTP_HOST")
-MAILERSEND_SMTP_PORT = os.getenv("MAILERSEND_SMTP_PORT")
-MAILERSEND_SMTP_USERNAME = os.getenv("MAILERSEND_SMTP_USERNAME")
-MAILERSEND_SMTP_PASSWORD = os.getenv("MAILERSEND_SMTP_PASSWORD")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -177,11 +171,11 @@ STATIC_URL = "static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
-EMAIL_BACKEND = "regular.email_backend.BrevoEmailBackend"  # se já criou a classe customizada
-EMAIL_HOST = "smtp-relay.brevo.com"
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_USE_SSL = False
-EMAIL_HOST_USER = "971289001@smtp-brevo.com"  # sempre este usuário Brevo
-EMAIL_HOST_PASSWORD = "xsmtpsib-662c361e9dd7971f7b3a1074e9839d5adbde4d514a7060cb8a4bcf52d763e6be-28sQdjHDMatDItWE"  # mesma senha SMTP da Brevo
-DEFAULT_FROM_EMAIL = "Regular Consultoria e Assessoria <noreply@regularconsultoria.com.br>"
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND")
+EMAIL_HOST = os.getenv("EMAIL_HOST")
+EMAIL_PORT = os.getenv("EMAIL_PORT")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS")
+EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL")
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL")
