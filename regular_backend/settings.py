@@ -13,6 +13,12 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 import os
 import environ
+import ssl
+import certifi
+
+# Corrige bug do Python 3.14 que ignora CA roots no Windows
+ssl_context = ssl.create_default_context(cafile=certifi.where())
+ssl._create_default_https_context = lambda *args, **kwargs: ssl_context
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -40,7 +46,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 
-ALLOWED_HOSTS = ['api.regularconsultoria.com.br']
+ALLOWED_HOSTS = [os.getenv("ALLOWED_HOSTS")]
 
 
 # Application definition
@@ -54,7 +60,13 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     'rest_framework',
     'regular',
-    'corsheaders'
+    'corsheaders',
+    'django_crontab',
+
+]
+
+CRONJOBS = [
+    ('0 8 * * *', 'regular.tasks.check_expiring_docs_task'),
 ]
 
 MIDDLEWARE = [
@@ -165,3 +177,11 @@ STATIC_URL = "static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+EMAIL_BACKEND = "regular.email_backend.BrevoEmailBackend"  # se já criou a classe customizada
+EMAIL_HOST = "smtp-relay.brevo.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_USE_SSL = False
+EMAIL_HOST_USER = "971289001@smtp-brevo.com"  # sempre este usuário Brevo
+EMAIL_HOST_PASSWORD = "xsmtpsib-662c361e9dd7971f7b3a1074e9839d5adbde4d514a7060cb8a4bcf52d763e6be-28sQdjHDMatDItWE"  # mesma senha SMTP da Brevo
+DEFAULT_FROM_EMAIL = "Regular Consultoria e Assessoria <noreply@regularconsultoria.com.br>"

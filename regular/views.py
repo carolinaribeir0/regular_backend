@@ -13,14 +13,126 @@ import os
 import datetime
 from supabase import create_client
 from urllib.parse import unquote
-from rest_framework.exceptions import ValidationError
+from django.core.mail import send_mail
+from rest_framework.permissions import AllowAny
+from django.contrib.auth.models import User
+from django.http import JsonResponse
+from django.core.signing import Signer, BadSignature, SignatureExpired
+from django.utils import timezone
+from datetime import timedelta
 
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
-
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
+signer = Signer()
+
+password_reset_tokens = {}
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def support_request(request):
+    company_id = request.GET.get("company_id")
+    nome = request.data.get("nome")
+    sobrenome = request.data.get("sobrenome")
+    email = request.data.get("email")
+    suporte = request.data.get("suporte")
+
+    if not nome or not email or not suporte:
+        return Response({"error": "Campos obrigatórios ausentes."}, status=400)
+
+    company_name = "Empresa não identificada"
+
+    if company_id:
+        from regular.models import Company  # ou o model equivalente
+        company = Company.objects.filter(id=company_id).first()
+        if company:
+            company_name = company.name
+
+    subject = f"Nova solicitação de suporte - {nome} {sobrenome or ''}, {company_name}"
+    message = (
+        f"Nova mensagem de suporte recebida:\n\n"
+        f"Empresa: {company_name}\n"
+        f"Nome: {nome} {sobrenome or ''}\n"
+        f"E-mail: {email}\n\n"
+        f"Mensagem:\n{suporte}"
+    )
+
+    send_mail(
+        subject,
+        message,
+        "Regular Suporte <noreply@regularconsultoria.com.br>",
+        ["consultoria.regulatoriafg@gmail.com"],
+        fail_silently=False,
+    )
+
+    return Response({"message": "Solicitação de suporte enviada com sucesso!"}, status=200)
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def password_reset(request):
+    email = request.data.get("email")
+
+    if not email:
+        return JsonResponse({"error": "E-mail é obrigatório."}, status=400)
+
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return JsonResponse({"error": "Usuário não encontrado."}, status=404)
+
+    token = signer.sign(user.id)
+    password_reset_tokens[token] = {
+        "user_id": user.id,
+        "created_at": timezone.now()
+    }
+
+    reset_link = f"http://localhost:5173/reset-password/{token}"
+    send_mail(
+        "Redefinição de senha - Regular On",
+        f"Olá {user.username},\n\nClique no link para redefinir sua senha:\n{reset_link}\n\nSe você não solicitou isso, ignore este e-mail.",
+        "Regular Consultoria e Assessoria <noreply@regularconsultoria.com.br>",
+        [email],
+        fail_silently=False,
+    )
+
+    return JsonResponse({"message": "E-mail de redefinição enviado com sucesso."})
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def password_reset_confirm(request, token):
+    new_password = request.data.get("newPassword")
+    if not new_password:
+        return Response({"error": "A nova senha é obrigatória"}, status=400)
+
+    try:
+        # Verifica se o token existe
+        token_data = password_reset_tokens.get(token)
+        if not token_data:
+            return Response({"error": "Token inválido ou expirado"}, status=400)
+
+        # Verifica expiração (30 min)
+        if timezone.now() - token_data["created_at"] > timedelta(minutes=30):
+            del password_reset_tokens[token]  # ❗ Remove token expirado
+            return Response({"error": "O link expirou, solicite um novo"}, status=400)
+
+        # Verifica assinatura
+        user_id = signer.unsign(token)
+        user = User.objects.get(id=user_id)
+        user.set_password(new_password)
+        user.save()
+
+        del password_reset_tokens[token]  # ✅ Remove token após uso
+
+        return Response({"message": "Senha redefinida com sucesso!"}, status=200)
+
+    except (BadSignature, SignatureExpired, User.DoesNotExist):
+        return Response({"error": "Token inválido ou usuário não encontrado"}, status=400)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -182,7 +294,7 @@ class RenewableDocListView(generics.ListAPIView):
         if user.is_superuser:
             return RenewableDoc.objects.all().order_by('expiration_date')
 
-        company_id = user.userprofile.company.id
+        company_id = user.profile.company.id
 
         return RenewableDoc.objects.filter(company_id=company_id).order_by('expiration_date')
 
@@ -197,7 +309,7 @@ class RenewableDocDetailView(generics.RetrieveAPIView):
         if user.is_superuser:
             return RenewableDoc.objects.all()
 
-        company_id = user.userprofile.company.id
+        company_id = user.profile.company.id
         return RenewableDoc.objects.filter(company_id=company_id)
 
 class RenewableDocCreateView(generics.CreateAPIView):
@@ -218,7 +330,7 @@ class BudgetListView(generics.ListAPIView):
         if user.is_superuser:
             return Budget.objects.all().order_by('scheduled_date')
 
-        company_id = user.userprofile.company.id
+        company_id = user.profile.company.id
 
         return Budget.objects.filter(company_id=company_id).order_by('scheduled_date')
 
@@ -233,7 +345,7 @@ class BudgetDetailView(generics.RetrieveAPIView):
         if user.is_superuser:
             return Budget.objects.all()
 
-        company_id = user.userprofile.company.id
+        company_id = user.profile.company.id
         return Budget.objects.filter(company_id=company_id)
 
 class BudgetCreateView(generics.CreateAPIView):
@@ -254,7 +366,7 @@ class FinanceListView(generics.ListAPIView):
         if user.is_superuser:
             return Finance.objects.all().order_by('due_date')
 
-        company_id = user.userprofile.company.id
+        company_id = user.profile.company.id
 
         return Finance.objects.filter(company_id=company_id).order_by('due_date')
 
@@ -269,7 +381,7 @@ class FinanceDetailView(generics.RetrieveAPIView):
         if user.is_superuser:
             return Finance.objects.all()
 
-        company_id = user.userprofile.company.id
+        company_id = user.profile.company.id
         return Finance.objects.filter(company_id=company_id)
 
 class FinanceCreateView(generics.CreateAPIView):
@@ -290,7 +402,7 @@ class ConstitutiveDocumentListView(generics.ListAPIView):
         if user.is_superuser:
             return ConstitutiveDocument.objects.all()
 
-        company_id = user.userprofile.company.id
+        company_id = user.profile.company.id
 
         return ConstitutiveDocument.objects.filter(company_id=company_id)
 
@@ -305,7 +417,7 @@ class ConstitutiveDocumentDetailView(generics.RetrieveAPIView):
         if user.is_superuser:
             return ConstitutiveDocument.objects.all()
 
-        company_id = user.userprofile.company.id
+        company_id = user.profile.company.id
         return ConstitutiveDocument.objects.filter(company_id=company_id)
 
 class ConstitutiveDocumentCreateView(generics.CreateAPIView):

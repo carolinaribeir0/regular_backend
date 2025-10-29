@@ -3,29 +3,42 @@ from django.contrib.auth.models import User
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
+
 class Company(models.Model):
     name = models.CharField(max_length=255)
-    cnpj = models.CharField(max_length=18, unique=True)  # exemplo BR
+    cnpj = models.CharField(max_length=18, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
 
+
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
-    company = models.ForeignKey(Company, on_delete=models.CASCADE)
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, null=True, blank=True)
     companies = models.ManyToManyField(Company, related_name="superusers", blank=True)
 
     def __str__(self):
         return f"{self.user.username} profile"
+
+    @property
+    def company_name(self):
+        return self.company.name if self.company else ""
+
+
+# ✅ Signals devem ficar fora da classe
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
-    if created:
+    # Cria perfil apenas se for novo usuário e ainda não existir
+    if created and not hasattr(instance, "profile"):
         UserProfile.objects.create(user=instance)
+
 
 @receiver(post_save, sender=User)
 def save_user_profile(sender, instance, **kwargs):
-    instance.profile.save()
+    # Salva perfil apenas se ele existir
+    if hasattr(instance, "profile"):
+        instance.profile.save()
 
 class RenewableDoc(models.Model):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="renewable_docs")
@@ -65,6 +78,7 @@ class Finance(models.Model):
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     invoice = models.URLField()
     contract = models.URLField()
+    is_paid = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Invoice {self.invoice}"

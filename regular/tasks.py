@@ -1,51 +1,45 @@
-# regular/tasks.py
-from celery import shared_task
-from django.utils import timezone
 from datetime import timedelta
+from django.core.mail import send_mail
+from django.utils import timezone
+from regular.models import RenewableDoc, UserProfile
 from django.conf import settings
-from mailersend import Email
-from .models import RenewableDoc, UserProfile
 
-@shared_task
 def check_expiring_docs_task():
+    """
+    Verifica documentos com data de expiração <= 30 dias e envia alertas por e-mail.
+    """
     today = timezone.now().date()
     target_date = today + timedelta(days=30)
 
-    docs = RenewableDoc.objects.filter(expiration_date=target_date, alert_sent=False)
+    docs = RenewableDoc.objects.filter(
+        expiration_date__lte=target_date,  # <= 30 dias
+        alert_sent=False
+    )
 
     if not docs.exists():
         return "Nenhum documento expira em 30 dias."
 
-    mailer = Email(settings.MAILERSEND_API_KEY)
-
-
     for doc in docs:
-        profiles = UserProfile.objects.filter(company=doc.company)
-        recipients = [p.user.email for p in profiles if p.user.email]
-
-        if not recipients:
-            continue
-
-        subject = f"[ALERTA] Documento prestes a expirar: {doc.doc_name}"
-        message = (
-            f"O documento '{doc.doc_name}' da empresa {doc.company.name} "
-            f"irá expirar em {doc.expiration_date}. "
-            f"Favor providenciar a renovação."
-        )
-
-        mail_body = {
-            "from": {
-                "email": settings.MAILERSEND_FROM_EMAIL,
-                "name": "Sistema de Alertas"
-            },
-            "to": [{"email": email} for email in recipients],
-            "subject": subject,
-            "text": message,
-        }
-
-        mailer.send(mail_body)
+        company = doc.company
+        user_profiles = UserProfile.objects.filter(company=company)
+        for profile in user_profiles:
+            user_email=profile.user.email
+            if user_email:
+                send_mail(
+                    subject=f"⚠️ Documento '{doc.doc_name}' expira em breve",
+                    message=(
+                        f"Olá, {company.name} \n\n A Regula On está aqui para te lembrar: \n\n O documento '{doc.doc_name}' "
+                        f"expira em {doc.expiration_date.strftime('%d/%m/%Y')}.\n"
+                        f"Por favor, providencie a renovação.\n\n Para conformidade sanitária, recomendamos a renovação antes do vencimento. Conte com o nosso apoio!\n\n"
+                        f"Atenciosamente,\nRegula On"
+                    ),
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[user_email],
+                    fail_silently=False,
+                )
 
         doc.alert_sent = True
-        doc.save(update_fields=["alert_sent"])
+        doc.save()
 
-    return "Emails enviados com sucesso!"
+    return f"{docs.count()} alertas de expiração enviados com sucesso."
+

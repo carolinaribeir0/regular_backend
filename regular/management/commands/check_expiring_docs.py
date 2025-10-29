@@ -1,80 +1,9 @@
-import os
 from django.core.management.base import BaseCommand
-from django.utils import timezone
-from datetime import timedelta
-from regular.models import RenewableDoc, UserProfile
-from django.core.mail import EmailMessage, get_connection
-
+from regular.tasks import check_expiring_docs_task
 
 class Command(BaseCommand):
-    help = "Verifica documentos que irão expirar em 30 dias e envia alerta por email (via Brevo SMTP)"
+    help = "Verifica documentos a expirar e envia alerta por e-mail."
 
     def handle(self, *args, **kwargs):
-        smtp_server = os.getenv("SMTP_SERVER")
-        smtp_port = os.getenv("SMTP_PORT")
-        smtp_user = os.getenv("SMTP_USER")
-        smtp_pass = os.getenv("SMTP_PASS")
-
-        today = timezone.now().date()
-        target_date = today + timedelta(days=16)
-
-        docs_to_notify = RenewableDoc.objects.filter(expiration_date=target_date, alert_sent=False)
-
-        if not docs_to_notify.exists():
-            self.stdout.write(self.style.SUCCESS("Nenhum documento precisa de alerta hoje."))
-            return
-
-        # Cria a conexão SMTP
-        with get_connection(
-            host=smtp_server,
-            port=smtp_port,
-            username=smtp_user,
-            password=smtp_pass,
-            use_tls=True,
-        ) as connection:
-
-            for doc in docs_to_notify:
-                profiles_with_email = UserProfile.objects.filter(
-                    company=doc.company,
-                    user__email__isnull=False
-                ).exclude(user__email__exact='').select_related('user')
-
-                if not profiles_with_email.exists():
-                    self.stdout.write(f"Nenhum usuário com email encontrado para a empresa {doc.company.name}")
-                    continue
-
-                recipient_list = [p.user.email for p in profiles_with_email]
-
-                subject = f"[ALERTA] Documento prestes a expirar: {doc.doc_name}"
-                html_content = (
-                    f"<p>Olá, a Regular está aqui para te lembrar:</p>"
-                    f"<p>O documento <strong>'{doc.doc_name}'</strong> da empresa <strong>{doc.company.name}</strong> "
-                    f"irá expirar em <strong>{doc.expiration_date.strftime('%d/%m/%Y')}</strong>.</p>"
-                    f"<p>Favor providenciar a renovação.</p>"
-                    f"<p>Para conformidade sanitária, recomendamos a renovação antes do vencimento. Conte com o nosso apoio!</p>"
-                    f"<p>Atenciosamente,</p>"
-                    f"<p>Regular Consultoria</p>"
-                )
-
-                for recipient in recipient_list:
-                    try:
-                        email = EmailMessage(
-                            subject=subject,
-                            body=html_content,
-                            from_email=smtp_user,
-                            to=[recipient],
-                            connection=connection,
-                        )
-                        email.content_subtype = "html"
-                        email.send()
-                        self.stdout.write(self.style.SUCCESS(
-                            f"✅ Email enviado para {recipient} sobre o doc '{doc.doc_name}'"
-                        ))
-                    except Exception as e:
-                        self.stdout.write(self.style.ERROR(
-                            f"❌ Erro ao enviar email para {recipient}: {str(e)}"
-                        ))
-
-                # Marca o documento como notificado (depois de tentar todos)
-                doc.alert_sent = True
-                doc.save(update_fields=["alert_sent"])
+        result = check_expiring_docs_task()
+        self.stdout.write(self.style.SUCCESS(result))
