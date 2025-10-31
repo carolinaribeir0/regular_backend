@@ -92,7 +92,7 @@ def password_reset(request):
         "created_at": timezone.now()
     }
 
-    reset_link = f"{settings.ALLOWED_HOSTS}/reset-password/{token}"
+    reset_link = f"{settings.FRONTEND_URL}/reset-password/{token}"
     send_mail(
         "Redefinição de senha - Regular On",
         f"Olá {user.username},\n\nClique no link para redefinir sua senha:\n{reset_link}\n\nSe você não solicitou isso, ignore este e-mail.",
